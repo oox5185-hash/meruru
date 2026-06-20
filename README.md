@@ -1195,7 +1195,7 @@ function saveSettings() {
     alert('设置已保存！');
 }
 
-// 获取API支持的模型列表（点击查询这个API有哪些渠道/模型）
+// 获取API模型列表（可点击选择）
 async function testConnection() {
     const dot = document.getElementById('apiStatusDot');
     dot.className = 'status-dot';
@@ -1236,18 +1236,57 @@ async function testConnection() {
             return;
         }
 
-        const list = models.map(m => m.id || m.name || m).join('\n');
         dot.className = 'status-dot ok';
-
-        // 让用户可以直接复制某个模型名填进去
-        const pick = prompt('可用模型共 ' + models.length + ' 个：\n\n' + list + '\n\n如需使用某个模型，请复制名称粘贴到下方输入框：', document.getElementById('setModel').value);
-        if (pick !== null && pick.trim() !== '') {
-            document.getElementById('setModel').value = pick.trim();
-        }
+        showModelPicker(models.map(m => m.id || m.name || m));
     } catch(e) {
         dot.className = 'status-dot err';
         alert('获取模型列表失败：' + e.message);
     }
+}
+
+// 显示可点击的模型选择列表
+function showModelPicker(modelIds) {
+    // 移除旧的（如果有）
+    const old = document.getElementById('modelPickerOverlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'modelPickerOverlay';
+    overlay.className = 'overlay show';
+    overlay.style.zIndex = '60';
+
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+
+    const title = document.createElement('h2');
+    title.innerHTML = '<span>选择模型 (' + modelIds.length + ')</span><span class="close-x">✕</span>';
+    title.querySelector('.close-x').onclick = () => overlay.remove();
+    panel.appendChild(title);
+
+    const tip = document.createElement('div');
+    tip.style.cssText = 'color:rgba(255,255,255,0.5);font-size:12px;margin-bottom:10px';
+    tip.textContent = '点击任意模型名，自动填入设置';
+    panel.appendChild(tip);
+
+    const list = document.createElement('div');
+    list.className = 'history-list';
+
+    modelIds.forEach(id => {
+        const item = document.createElement('div');
+        item.className = 'history-item meruru';
+        item.style.cursor = 'pointer';
+        item.textContent = id;
+        item.onclick = () => {
+            document.getElementById('setModel').value = id;
+            overlay.remove();
+            alert('已选择模型：' + id);
+        };
+        list.appendChild(item);
+    });
+
+    panel.appendChild(list);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
 }
 
 // 重新加载模型
