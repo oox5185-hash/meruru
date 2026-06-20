@@ -1,24 +1,48 @@
 {
-	"Version": 3,
-	"FileReferences": {
-		"Moc": "Meruru - Model - Mark.moc3",
-		"Textures": [
-			"Meruru - Model - Mark.4096/texture_00.png",
-			"Meruru - Model - Mark.4096/texture_01.png"
-		],
-		"Physics": "Meruru - Model - Mark.physics3.json",
-		"DisplayInfo": "Meruru - Model - Mark.cdi3.json"
-	},
-	"Groups": [
-		{
-			"Target": "Parameter",
-			"Name": "LipSync",
-			"Ids": []
-		},
-		{
-			"Target": "Parameter",
-			"Name": "EyeBlink",
-			"Ids": []
-		}
-	]
+    "Version": 3,
+    "FileReferences": {
+        "Moc": "Meruru - Model - Mark.moc3",
+        "Textures": [
+            "Meruru - Model - Mark.4096/texture_00.png",
+            "Meruru - Model - Mark.4096/texture_01.png"
+        ],
+        "Physics": "Meruru - Model - Mark.physics3.json",
+        "DisplayInfo": "Meruru - Model - Mark.cdi3.json",
+        "Expressions": [
+            {"Name": "shy", "File": "shy.exp3.json"},
+            {"Name": "namida", "File": "namida.exp3.json"},
+            {"Name": "pale", "File": "pale.exp3.json"},
+            {"Name": "sweat01", "File": "sweat01.exp3.json"},
+            {"Name": "lightless", "File": "lightless.exp3.json"},
+            {"Name": "arms", "File": "arms.exp3.json"},
+            {"Name": "hat_toggle", "File": "有帽无帽.exp3.json"},
+            {"Name": "hair_toggle", "File": "长发短发.exp3.json"},
+            {"Name": "exp02", "File": "02.exp3.json"},
+            {"Name": "exp03", "File": "03.exp3.json"},
+            {"Name": "exp04", "File": "04.exp3.json"},
+            {"Name": "exp05", "File": "05.exp3.json"},
+            {"Name": "exp06", "File": "06.exp3.json"},
+            {"Name": "exp07", "File": "07.exp3.json"},
+            {"Name": "exp08", "File": "08.exp3.json"},
+            {"Name": "exp09", "File": "09.exp3.json"},
+            {"Name": "exp10", "File": "10.exp3.json"},
+            {"Name": "exp11", "File": "11.exp3.json"},
+            {"Name": "exp12", "File": "12.exp3.json"},
+            {"Name": "exp13", "File": "13.exp3.json"},
+            {"Name": "exp14", "File": "14.exp3.json"},
+            {"Name": "exp1516", "File": "1516.exp3.json"}
+        ],
+        "Motions": {
+            "Idle": [
+                {"File": "idle.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5}
+            ],
+            "Tap": [
+                {"File": "idle.motion3.json", "FadeInTime": 0.3, "FadeOutTime": 0.3}
+            ]
+        }
+    },
+    "Groups": [
+        {"Target": "Parameter", "Name": "LipSync", "Ids": []},
+        {"Target": "Parameter", "Name": "EyeBlink", "Ids": []}
+    ]
 }
