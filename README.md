@@ -178,7 +178,7 @@
         /* 切换输入栏的小按钮 */
         .toggle-input-btn {
             position: fixed;
-            bottom: 12px;
+            bottom: 70px;
             right: 12px;
             z-index: 19;
             width: 48px;
@@ -1189,43 +1189,64 @@ function saveSettings() {
     saveSettingsData(s);
     closeSettings();
 
-    // 重新定位模型 + 重启定时器
     positionModel();
     initBehaviorTimers();
 
     alert('设置已保存！');
 }
 
-// 测试API连接
+// 获取API支持的模型列表（点击查询这个API有哪些渠道/模型）
 async function testConnection() {
     const dot = document.getElementById('apiStatusDot');
     dot.className = 'status-dot';
 
-    // 临时保存当前输入的设置
-    const s = getSettings();
-    s.apiUrl = document.getElementById('setApiUrl').value.trim();
-    s.apiKey = document.getElementById('setApiKey').value.trim();
-    s.model = document.getElementById('setModel').value.trim();
-    saveSettingsData(s);
+    const apiUrl = document.getElementById('setApiUrl').value.trim();
+    const apiKey = document.getElementById('setApiKey').value.trim();
 
-    if (!s.apiUrl || !s.apiKey) {
-        dot.className = 'status-dot err';
+    if (!apiUrl || !apiKey) {
         alert('请先填写API地址和Key');
+        dot.className = 'status-dot err';
         return;
     }
 
     try {
-        const reply = await callAI('（测试连接，请简短回应）');
-        if (reply && !reply.includes('错误') && !reply.includes('连接不上')) {
+        let modelsUrl = apiUrl;
+        if (modelsUrl.endsWith('/chat/completions')) {
+            modelsUrl = modelsUrl.replace('/chat/completions', '');
+        }
+        if (modelsUrl.endsWith('/')) modelsUrl = modelsUrl.slice(0, -1);
+        if (!modelsUrl.endsWith('/v1')) modelsUrl += '/v1';
+        modelsUrl += '/models';
+
+        const response = await fetch(modelsUrl, {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + apiKey }
+        });
+
+        if (!response.ok) {
+            throw new Error('状态码：' + response.status);
+        }
+
+        const data = await response.json();
+        const models = data.data || data.models || [];
+
+        if (models.length === 0) {
+            alert('连接成功，但没找到可用模型');
             dot.className = 'status-dot ok';
-            alert('连接成功！梅露露能正常说话了。');
-        } else {
-            dot.className = 'status-dot err';
-            alert('连接失败：' + reply);
+            return;
+        }
+
+        const list = models.map(m => m.id || m.name || m).join('\n');
+        dot.className = 'status-dot ok';
+
+        // 让用户可以直接复制某个模型名填进去
+        const pick = prompt('可用模型共 ' + models.length + ' 个：\n\n' + list + '\n\n如需使用某个模型，请复制名称粘贴到下方输入框：', document.getElementById('setModel').value);
+        if (pick !== null && pick.trim() !== '') {
+            document.getElementById('setModel').value = pick.trim();
         }
     } catch(e) {
         dot.className = 'status-dot err';
-        alert('连接失败：' + e.message);
+        alert('获取模型列表失败：' + e.message);
     }
 }
 
@@ -1264,7 +1285,6 @@ function openHistory() {
     }
 
     document.getElementById('historyOverlay').classList.add('show');
-    // 滚动到底部
     setTimeout(() => {
         list.scrollTop = list.scrollHeight;
     }, 50);
@@ -1290,7 +1310,7 @@ function clearAllData() {
     }
 }
 
-// ==================== 互动监听（刷新闲置计时） ====================
+// ==================== 互动监听 ====================
 
 document.addEventListener('pointerdown', markInteraction);
 document.addEventListener('keydown', markInteraction);
@@ -1298,22 +1318,14 @@ document.addEventListener('keydown', markInteraction);
 // ==================== 初始化启动 ====================
 
 async function init() {
-    // 好感度显示
     updateAffectionBadge();
-
-    // 加载Live2D模型
     await initLive2D();
-
-    // 启动自主行为定时器
     initBehaviorTimers();
-
-    // 欢迎问候（延迟1.5秒，等模型加载）
     setTimeout(() => {
         sendWelcomeGreeting();
     }, 1500);
 }
 
-// 欢迎问候
 async function sendWelcomeGreeting() {
     const settings = getSettings();
     if (!settings.apiUrl || !settings.apiKey) {
@@ -1343,7 +1355,6 @@ async function sendWelcomeGreeting() {
     isWaitingReply = false;
 }
 
-// 页面加载完成后启动
 window.addEventListener('load', () => {
     init();
 });
