@@ -3,7 +3,7 @@
     "FileReferences": {
         "Moc": "Meruru - Model - Mark.moc3",
         "Textures": [
-            "Meruru - Model - Mark.4096/texture_00.png?v=20260621",
+            "Meruru - Model - Mark.4096/texture_00.png",
             "Meruru - Model - Mark.4096/texture_01.png"
         ],
         "Physics": "Meruru - Model - Mark.physics3.json",
