@@ -538,7 +538,7 @@ const DEFAULT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/oox5185-hash/meruru@main/
 const DEFAULT_SETTINGS = {
     apiUrl: '',
     apiKey: '',
-    model: 'gpt-4o-mini',
+    model: '',
     live2dUrl: DEFAULT_MODEL_URL,
     greetInterval: 5,
     idleInterval: 8,
@@ -776,10 +776,16 @@ async function loadModel(url) {
         hideLoadingTip();
         setModelStatus(true);
 
+        // 停止引擎自动播放motion（由JS完全接管）
+        try {
+            live2dModel.internalModel.motionManager.stopAllMotions();
+        } catch(e2) {}
+
         // 启动自动动作
         startAutoAnimation();
 
     } catch(e) {
+
         console.error('Model load failed:', e);
         showLoadingTip('模型加载失败……<br><span style="font-size:12px">' + (e.message || '请检查模型地址和网络') + '</span>');
         setModelStatus(false);
@@ -819,8 +825,9 @@ function setEmotion(emotion) {
 }
 
 function playIdleMotion() {
-    if (!live2dModel) return;
-    try { live2dModel.motion('Idle'); } catch(e) {}
+    // 不再播放引擎motion，由JS自动动作系统完全接管
+    // 保留函数避免其他地方报错
+    return;
 }
 
 function setModelStatus(ok) {
@@ -996,7 +1003,13 @@ function animateLoop() {
         setParam(model, 'ParamBrowLY', 0);
         setParam(model, 'ParamBrowRY', 0);
     }
+
+    // ===== 9. 锁定特效参数（防止闪白） =====
+    setParam(model, 'Param29', 0);
+    setParam(model, 'Param30', 0);
+    setParam(model, 'Param22', 0);
 }
+
 
 // 安全设置参数
 function setParam(coreModel, paramId, value) {
@@ -1675,10 +1688,11 @@ function triggerIdleAction() {
             triggerSigh();
         }
     } else {
-        // 播放idle动作
-        playIdleMotion();
+        // 随机看看四周（代替原来的playIdleMotion）
+        triggerLookAround();
     }
 }
+
 
 // ===== 动作触发函数 =====
 
