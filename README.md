@@ -1042,7 +1042,7 @@ let weatherData = {
     loaded: false
 };
 
-// 通过IP获取城市，再获取天气
+// 通过IP获取城市，再获取天气（Open-Meteo，免费稳定）
 async function fetchWeather() {
     try {
         // 第一步：获取IP位置
@@ -1052,26 +1052,30 @@ async function fetchWeather() {
         const lat = ipData.lat;
         const lon = ipData.lon;
 
-        // 第二步：获取天气（用wttr.in，免费无需key）
-        const weatherRes = await fetch(`https://wttr.in/${city}?format=j1`);
+        // 第二步：用 Open-Meteo（完全免费，无需key，支持经纬度）
+        const weatherRes = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m`
+        );
         const wData = await weatherRes.json();
+        const current = wData.current;
 
-        const current = wData.current_condition[0];
-        const temp = current.temp_C;
-        const feelsLike = current.FeelsLikeC;
-        const humidity = current.humidity;
-        const desc = current.lang_zh && current.lang_zh[0] ? current.lang_zh[0].value : current.weatherDesc[0].value;
-        const weatherCode = parseInt(current.weatherCode);
+        const temp = Math.round(current.temperature_2m);
+        const feelsLike = Math.round(current.apparent_temperature);
+        const humidity = current.relative_humidity_2m;
+        const weatherCode = current.weather_code;
 
-        // 天气图标映射
+        // WMO天气代码映射
+        let desc = '未知';
         let icon = '🌤';
-        if (desc.includes('晴')) icon = '☀️';
-        else if (desc.includes('多云') || desc.includes('阴')) icon = '☁️';
-        else if (desc.includes('雨')) icon = '🌧️';
-        else if (desc.includes('雪')) icon = '❄️';
-        else if (desc.includes('雷')) icon = '⛈️';
-        else if (desc.includes('雾') || desc.includes('霾')) icon = '🌫️';
-        else if (desc.includes('风')) icon = '💨';
+        if (weatherCode === 0) { desc = '晴天'; icon = '☀️'; }
+        else if (weatherCode <= 3) { desc = '多云'; icon = '⛅'; }
+        else if (weatherCode <= 48) { desc = '雾'; icon = '🌫️'; }
+        else if (weatherCode <= 57) { desc = '毛毛雨'; icon = '🌦️'; }
+        else if (weatherCode <= 67) { desc = '下雨'; icon = '🌧️'; }
+        else if (weatherCode <= 77) { desc = '下雪'; icon = '❄️'; }
+        else if (weatherCode <= 82) { desc = '阵雨'; icon = '🌧️'; }
+        else if (weatherCode <= 86) { desc = '阵雪'; icon = '❄️'; }
+        else if (weatherCode >= 95) { desc = '雷暴'; icon = '⛈️'; }
 
         weatherData = {
             city: city,
@@ -1088,24 +1092,17 @@ async function fetchWeather() {
 
     } catch(e) {
         console.error('Weather fetch failed:', e);
-        // 备用方案：只用wttr.in简单格式
-        try {
-            const res = await fetch('https://wttr.in/?format=%C+%t&lang=zh');
-            const text = await res.text();
-            weatherData = {
-                city: '当前位置',
-                temp: text.match(/[+-]?\d+/)?.[0] || '--',
-                condition: text.split('+')[0]?.trim() || '未知',
-                icon: '🌡',
-                loaded: true
-            };
-            updateWeatherBadge();
-        } catch(e2) {
-            weatherData.condition = '获取失败';
-            updateWeatherBadge();
-        }
+        weatherData = {
+            city: '未知',
+            temp: '--',
+            condition: '获取失败',
+            icon: '❓',
+            loaded: false
+        };
+        updateWeatherBadge();
     }
 }
+
 
 function updateWeatherBadge() {
     const badge = document.getElementById('weatherBadge');
