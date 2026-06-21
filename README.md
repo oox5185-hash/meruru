@@ -654,11 +654,12 @@ function applyTimeMoodEffect() {
 </script>
 
 <script>
-// ==================== Live2D 加载【防闪白修复】 ====================
+// ==================== Live2D 加载【彻底防闪白】 ====================
 
 let live2dApp = null;
 let live2dModel = null;
 let currentEmotion = 'neutral';
+let paramGuardActive = false; // 参数守卫开关
 
 async function initLive2D() {
     const settings = getSettings();
@@ -702,6 +703,7 @@ async function loadModel(url) {
 
     showLoadingTip('正在加载梅露露……');
     document.getElementById('live2d-canvas').classList.remove('ready');
+    paramGuardActive = false;
 
     try {
         if (live2dModel) {
@@ -712,7 +714,7 @@ async function loadModel(url) {
 
         live2dModel = await PIXI.live2d.Live2DModel.from(url, { autoInteract: false });
 
-        // 【防闪白】先隐藏
+        // 先隐藏
         live2dModel.visible = false;
         live2dApp.stage.addChild(live2dModel);
         positionModel();
@@ -723,10 +725,17 @@ async function loadModel(url) {
         try { live2dModel.internalModel.motionManager.stopAllMotions(); } catch(e2) {}
         try { live2dModel.internalModel.motionManager.expressionManager = null; } catch(e2) {}
 
-        // 【防闪白】强制锁定参数
-        forceInitParams();
-        await waitFrames(3);
+        // 【关键】启动参数守卫：在引擎每帧更新后立刻覆盖参数
+        paramGuardActive = true;
+        installParamGuard();
 
+        // 强制锁定参数
+        forceInitParams();
+
+        // 等待足够多帧，确保守卫已经生效
+        await waitFrames(5);
+
+        // 显示模型
         live2dModel.visible = true;
         document.getElementById('live2d-canvas').classList.add('ready');
         hideLoadingTip();
@@ -738,6 +747,21 @@ async function loadModel(url) {
         showLoadingTip('模型加载失败……<br><span style="font-size:12px">' + (e.message || '请检查模型地址和网络') + '</span>');
         setModelStatus(false);
     }
+}
+
+// 【彻底防闪白】在PIXI ticker中，每帧渲染前强制覆盖特效参数
+function installParamGuard() {
+    live2dApp.ticker.add(paramGuardTick, null, PIXI.UPDATE_PRIORITY.HIGH);
+}
+
+function paramGuardTick() {
+    if (!paramGuardActive || !live2dModel || !live2dModel.internalModel) return;
+    const model = live2dModel.internalModel.coreModel;
+    // 每帧强制把特效图层参数归零（在animateLoop接管前）
+    for (let i = 3; i <= 32; i++) {
+        setParam(model, 'Param' + i, 0);
+    }
+    setParam(model, 'ParamCheek', 0);
 }
 
 function forceInitParams() {
@@ -997,7 +1021,7 @@ function stopTalking() {
 }
 </script>
 <script>
-// ==================== 天气系统【修复：改用HTTPS兼容的API】 ====================
+// ==================== 天气系统【修复：中文城市名】 ====================
 
 let weatherData = {
     city: '未知',
@@ -1009,47 +1033,72 @@ let weatherData = {
 
 async function fetchWeather() {
     try {
-        // 【修复】使用支持HTTPS的IP定位服务（多个备选）
         let lat, lon, city;
 
-        // 方案1：ipwho.is（免费，支持HTTPS）
+        // 方案1：ipapi.co（支持HTTPS，返回中文城市需要额外处理）
         try {
-            const ipRes = await fetch('https://ipwho.is/');
+            const ipRes = await fetch('https://ipapi.co/json/');
             const ipData = await ipRes.json();
-            if (ipData.success !== false) {
-                city = ipData.city || ipData.region || '未知';
+            if (ipData.latitude && ipData.longitude) {
                 lat = ipData.latitude;
                 lon = ipData.longitude;
+                // ipapi.co 返回英文城市名，用region_code + city拼中文
+                city = ipData.city || ipData.region || '未知';
+                // 尝试获取中文名
+                if (ipData.country_code === 'CN') {
+                    // 国内用户，用region作为城市（通常是省）
+                    city = ipData.region || ipData.city || '未知';
+                }
             }
-        } catch(e1) {}
-
-        // 方案2：如果方案1失败，用 ipapi.co
-        if (!lat || !lon) {
-            try {
-                const ipRes2 = await fetch('https://ipapi.co/json/');
-                const ipData2 = await ipRes2.json();
-                city = ipData2.city || ipData2.region || '未知';
-                lat = ipData2.latitude;
-                lon = ipData2.longitude;
-            } catch(e2) {}
+        } catch(e1) {
+            console.warn('ipapi.co failed:', e1);
         }
 
-        // 方案3：如果都失败，用 ip-api.io
+        // 方案2：使用支持中文的 IP 定位
         if (!lat || !lon) {
             try {
-                const ipRes3 = await fetch('https://ip-api.io/json');
+                const ipRes2 = await fetch('https://ipwho.is/?lang=zh-CN');
+                const ipData2 = await ipRes2.json();
+                if (ipData2.success !== false && ipData2.latitude) {
+                    lat = ipData2.latitude;
+                    lon = ipData2.longitude;
+                    city = ipData2.city || ipData2.region || '未知';
+                }
+            } catch(e2) {
+                console.warn('ipwho.is failed:', e2);
+            }
+        }
+
+        // 方案3：最后兜底
+        if (!lat || !lon) {
+            try {
+                const ipRes3 = await fetch('https://get.geojs.io/v1/ip/geo.json');
                 const ipData3 = await ipRes3.json();
-                city = ipData3.city || ipData3.region_name || '未知';
-                lat = ipData3.latitude;
-                lon = ipData3.longitude;
-            } catch(e3) {}
+                lat = parseFloat(ipData3.latitude);
+                lon = parseFloat(ipData3.longitude);
+                city = ipData3.city || ipData3.region || '未知';
+            } catch(e3) {
+                console.warn('geojs failed:', e3);
+            }
         }
 
         if (!lat || !lon) {
             throw new Error('无法获取位置信息');
         }
 
-        // 用 Open-Meteo 获取天气（完全免费，无需key，支持HTTPS）
+        // 用经纬度反查中文地名（Open-Meteo geocoding反向查询）
+        try {
+            const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=zh&format=json`);
+            const geoData = await geoRes.json();
+            if (geoData.results && geoData.results.length > 0) {
+                const zhName = geoData.results[0].name;
+                if (zhName) city = zhName;
+            }
+        } catch(e4) {
+            // 翻译失败就用原来的名字
+        }
+
+        // 用 Open-Meteo 获取天气
         const weatherRes = await fetch(
             `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m`
         );
@@ -1134,9 +1183,9 @@ function getWeatherPrompt() {
     return `当前天气：${weatherData.city}，${weatherData.temp}°C，${weatherData.condition}。体感温度${weatherData.feelsLike || weatherData.temp}°C，湿度${weatherData.humidity || '未知'}%。`;
 }
 
-// 每30分钟刷新天气
 setInterval(fetchWeather, 30 * 60 * 1000);
 </script>
+
 
 <script>
 // ==================== 时间系统 ====================
