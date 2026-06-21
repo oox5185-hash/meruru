@@ -55,12 +55,11 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.55);
             border: 1px solid rgba(255,255,255,0.2);
             color: rgba(255,255,255,0.85);
             font-size: 16px;
             cursor: pointer;
-            backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -81,33 +80,30 @@
         }
 
         .affection-badge {
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.55);
             border: 1px solid rgba(255,182,193,0.3);
             border-radius: 16px;
             padding: 6px 12px;
             color: rgba(255,182,193,0.9);
             font-size: 12px;
-            backdrop-filter: blur(4px);
         }
 
         .mood-badge {
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.55);
             border: 1px solid rgba(127,219,202,0.3);
             border-radius: 16px;
             padding: 6px 12px;
             color: rgba(127,219,202,0.9);
             font-size: 12px;
-            backdrop-filter: blur(4px);
         }
 
         .weather-badge {
-            background: rgba(0,0,0,0.35);
+            background: rgba(0,0,0,0.55);
             border: 1px solid rgba(255,220,100,0.3);
             border-radius: 16px;
             padding: 6px 12px;
             color: rgba(255,220,100,0.9);
             font-size: 11px;
-            backdrop-filter: blur(4px);
         }
 
         .speech-bubble {
@@ -156,8 +152,7 @@
             display: flex;
             gap: 8px;
             align-items: center;
-            background: rgba(0,0,0,0.4);
-            backdrop-filter: blur(6px);
+            background: rgba(0,0,0,0.6);
             transform: translateY(0);
             transition: transform 0.3s ease;
         }
@@ -389,7 +384,6 @@
             background: rgba(0,0,0,0.5);
             padding: 16px 24px;
             border-radius: 12px;
-            backdrop-filter: blur(4px);
         }
 
         .loading-tip.hidden {
