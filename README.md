@@ -402,6 +402,113 @@
 
         .status-dot.ok { background: #7fdbca; }
         .status-dot.err { background: #ff6b6b; }
+
+        /* ===== 桌宠按钮+面板 ===== */
+        #pet-btn {
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(100, 180, 255, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        #pet-btn:hover {
+            background: rgba(100, 180, 255, 0.85);
+            transform: translateX(-50%) scale(1.1);
+        }
+
+        #pet-panel {
+            position: fixed;
+            top: 62px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9998;
+            width: 260px;
+            background: rgba(30, 30, 50, 0.93);
+            border: 1px solid rgba(100, 180, 255, 0.4);
+            border-radius: 12px;
+            padding: 16px;
+            color: white;
+            font-size: 13px;
+            display: none;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        #pet-panel.show {
+            display: block;
+        }
+        #pet-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: #7ecfff;
+            text-align: center;
+        }
+        #pet-panel .pet-desc {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 14px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        #pet-panel label {
+            display: block;
+            margin-bottom: 4px;
+            color: #aad4ff;
+            font-size: 12px;
+        }
+        #pet-panel input[type="range"] {
+            width: 100%;
+            margin-bottom: 6px;
+            accent-color: #7ecfff;
+        }
+        #pet-size-value {
+            color: #fff;
+            font-weight: bold;
+        }
+        .pet-size-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 14px;
+        }
+        #pet-download-btn {
+            display: block;
+            width: 100%;
+            padding: 11px;
+            margin-top: 10px;
+            background: linear-gradient(135deg, #4a9eff, #7c5cff);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        #pet-download-btn:hover {
+            transform: scale(1.03);
+            box-shadow: 0 4px 15px rgba(100, 150, 255, 0.4);
+        }
+        .pet-note {
+            font-size: 10px;
+            color: #666;
+            margin-top: 8px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -412,6 +519,27 @@
 <div class="loading-tip" id="loadingTip">
     正在加载梅露露……<br>
     <span style="font-size:12px;opacity:0.6">第一次加载可能需要一点时间</span>
+</div>
+
+<!-- 桌宠按钮 -->
+<button id="pet-btn" onclick="togglePetPanel()" title="桌宠设置">🐾</button>
+
+<!-- 桌宠设置面板 -->
+<div id="pet-panel">
+    <h3>🧊 桌宠模式</h3>
+    <p class="pet-desc">下载APK安装后，梅露露会以悬浮窗形式<br>出现在你的手机桌面上~</p>
+
+    <label>悬浮窗大小：<span id="pet-size-value">250</span> dp</label>
+    <input type="range" id="pet-size-slider" min="150" max="400" value="250" step="10"
+           oninput="updatePetSize(this.value)">
+    <div class="pet-size-labels"><span>小</span><span>大</span></div>
+
+    <a id="pet-download-btn"
+       href="https://github.com/oox5185-hash/meruru-pet/releases/latest/download/meruru-pet.apk"
+       target="_blank">
+        📥 下载桌宠 APK
+    </a>
+    <p class="pet-note">Android 8.0+ | 需授予悬浮窗权限</p>
 </div>
 
 <div class="status-bar">
@@ -497,6 +625,7 @@
 <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@6.5.2/dist/browser/pixi.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.4.0/dist/cubism4.min.js"></script>
+
 <script>
 // ==================== 数据存储系统 ====================
 
@@ -1935,6 +2064,35 @@ async function sendWelcomeGreeting() {
 window.addEventListener('load', () => {
     init();
 });
+
+// ==================== 桌宠面板 ====================
+
+function togglePetPanel() {
+    document.getElementById('pet-panel').classList.toggle('show');
+}
+
+function updatePetSize(val) {
+    document.getElementById('pet-size-value').textContent = val;
+    localStorage.setItem('petSize', val);
+}
+
+document.addEventListener('click', function(e) {
+    const panel = document.getElementById('pet-panel');
+    const btn = document.getElementById('pet-btn');
+    if (panel && !panel.contains(e.target) && e.target !== btn) {
+        panel.classList.remove('show');
+    }
+});
+
+(function() {
+    const saved = localStorage.getItem('petSize');
+    if (saved) {
+        const slider = document.getElementById('pet-size-slider');
+        const display = document.getElementById('pet-size-value');
+        if (slider) slider.value = saved;
+        if (display) display.textContent = saved;
+    }
+})();
 </script>
 </body>
 </html>
