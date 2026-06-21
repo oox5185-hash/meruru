@@ -538,7 +538,7 @@ const DEFAULT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/oox5185-hash/meruru@main/
 const DEFAULT_SETTINGS = {
     apiUrl: '',
     apiKey: '',
-    model: '',
+    model: 'gpt-4o-mini',
     live2dUrl: DEFAULT_MODEL_URL,
     greetInterval: 5,
     idleInterval: 8,
@@ -603,12 +603,9 @@ function updateAffectionBadge() {
 <script>
 // ==================== 心情系统 ====================
 
-// 心情值：0-100，50为中性
-// 低于30=低落，30-45=有点烦，45-55=平静，55-70=愉快，70+=开心
 let currentMood = 50;
 let moodDecayTimer = null;
 
-// 心情名称映射
 function getMoodInfo(mood) {
     if (mood >= 80) return { emoji: '😊', name: '很开心', emotion: 'happy' };
     if (mood >= 65) return { emoji: '🙂', name: '愉快', emotion: 'happy' };
@@ -625,14 +622,15 @@ function updateMoodBadge() {
     badge.textContent = `${info.emoji} ${info.name} (${Math.round(currentMood)})`;
 }
 
-// 改变心情（带限制）
 function changeMood(delta) {
     currentMood = Math.max(0, Math.min(100, currentMood + delta));
     updateMoodBadge();
     saveMoodData();
-    // 心情变化时同步表情
-    const info = getMoodInfo(currentMood);
-    setEmotion(info.emotion);
+    // 只在没有主动情绪覆盖时，用心情影响表情
+    if (currentEmotion === 'neutral') {
+        const info = getMoodInfo(currentMood);
+        currentEmotion = info.emotion;
+    }
 }
 
 function saveMoodData() {
@@ -647,7 +645,6 @@ function loadMoodData() {
         const data = JSON.parse(localStorage.getItem(STORE.mood));
         if (data && data.value !== undefined) {
             currentMood = data.value;
-            // 离开太久，心情会回归中性
             const hours = (Date.now() - data.time) / (1000 * 60 * 60);
             if (hours > 2) {
                 currentMood = currentMood + (50 - currentMood) * Math.min(hours / 10, 0.8);
@@ -659,12 +656,9 @@ function loadMoodData() {
     updateMoodBadge();
 }
 
-// 自动心情波动（每30秒微小随机变化）
 function startMoodDecay() {
     moodDecayTimer = setInterval(() => {
-        // 随机波动 -3 ~ +2（略偏负，模拟自然情绪衰减）
         const drift = (Math.random() - 0.55) * 5;
-        // 趋向50的微弱回归力
         const regression = (50 - currentMood) * 0.02;
         currentMood = Math.max(0, Math.min(100, currentMood + drift + regression));
         updateMoodBadge();
@@ -672,17 +666,13 @@ function startMoodDecay() {
     }, 30000);
 }
 
-// 时间对心情的影响
 function applyTimeMoodEffect() {
     const hour = new Date().getHours();
     if (hour >= 1 && hour < 5) {
-        // 凌晨：心情容易低落
         changeMood(-3);
     } else if (hour >= 6 && hour < 9) {
-        // 早晨：心情略好
         changeMood(+2);
     } else if (hour >= 22) {
-        // 深夜：有点困倦低落
         changeMood(-2);
     }
 }
@@ -693,15 +683,7 @@ function applyTimeMoodEffect() {
 
 let live2dApp = null;
 let live2dModel = null;
-
-const EMOTION_TO_EXPRESSION = {
-    neutral: null,
-    happy: null,
-    cry: 'namida',
-    shy: 'shy',
-    worry: 'sweat01',
-    sleepy: 'lightless'
-};
+let currentEmotion = 'neutral';
 
 async function initLive2D() {
     const settings = getSettings();
@@ -713,13 +695,10 @@ async function initLive2D() {
 
     try {
         const canvas = document.getElementById('live2d-canvas');
-
-        // ===== 高清渲染：使用 devicePixelRatio =====
         const dpr = window.devicePixelRatio || 1;
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        // 设置canvas实际像素为屏幕像素 × dpr
         canvas.width = width * dpr;
         canvas.height = height * dpr;
         canvas.style.width = width + 'px';
@@ -735,7 +714,6 @@ async function initLive2D() {
             autoDensity: true
         });
 
-        // 让PIXI的stage也适配dpr
         live2dApp.renderer.resize(width, height);
 
         await loadModel(settings.live2dUrl);
@@ -781,18 +759,21 @@ async function loadModel(url) {
             live2dModel.internalModel.motionManager.stopAllMotions();
         } catch(e2) {}
 
+        // 禁用引擎的表情管理器
+        try {
+            live2dModel.internalModel.motionManager.expressionManager = null;
+        } catch(e2) {}
+
         // 启动自动动作
         startAutoAnimation();
 
     } catch(e) {
-
         console.error('Model load failed:', e);
         showLoadingTip('模型加载失败……<br><span style="font-size:12px">' + (e.message || '请检查模型地址和网络') + '</span>');
         setModelStatus(false);
     }
 }
 
-// 模型位置（偏左）
 function positionModel() {
     if (!live2dModel) return;
     const settings = getSettings();
@@ -806,27 +787,14 @@ function positionModel() {
     live2dModel.y = window.innerHeight * yRatio;
 }
 
-// 表情控制
+// 表情控制（不使用引擎表情系统，只记录状态，由animateLoop实现）
 function setEmotion(emotion) {
     if (!live2dModel) return;
-    const expName = EMOTION_TO_EXPRESSION[emotion];
-
-    try {
-        if (expName === null || expName === undefined) {
-            if (live2dModel.internalModel && live2dModel.internalModel.motionManager.expressionManager) {
-                live2dModel.internalModel.motionManager.expressionManager.resetExpression();
-            }
-        } else {
-            live2dModel.expression(expName);
-        }
-    } catch(e) {
-        console.error('Set emotion failed:', e);
-    }
+    currentEmotion = emotion || 'neutral';
 }
 
+// 保留函数避免报错，但不再播放引擎motion
 function playIdleMotion() {
-    // 不再播放引擎motion，由JS自动动作系统完全接管
-    // 保留函数避免其他地方报错
     return;
 }
 
@@ -845,10 +813,8 @@ function hideLoadingTip() {
     if (tip) tip.classList.add('hidden');
 }
 
-// 窗口resize
 window.addEventListener('resize', () => {
     if (live2dApp) {
-        const dpr = window.devicePixelRatio || 1;
         live2dApp.renderer.resize(window.innerWidth, window.innerHeight);
     }
     positionModel();
@@ -861,11 +827,10 @@ window.addEventListener('resize', () => {
 let animationFrameId = null;
 let autoAnimStartTime = Date.now();
 
-// 动作状态
 const autoAnim = {
     breathPhase: 0,
     blinkTimer: 0,
-    blinkState: 1, // 1=开眼, 0=闭眼
+    blinkState: 1,
     nextBlinkTime: 3000,
     headX: 0,
     headY: 0,
@@ -899,7 +864,7 @@ function animateLoop() {
 
     const now = Date.now();
     const elapsed = now - autoAnimStartTime;
-    const dt = 16; // ~60fps
+    const dt = 16;
     const model = live2dModel.internalModel.coreModel;
 
     // ===== 1. 呼吸 =====
@@ -910,27 +875,23 @@ function animateLoop() {
     // ===== 2. 自动眨眼 =====
     autoAnim.blinkTimer += dt;
     if (autoAnim.blinkState === 1 && autoAnim.blinkTimer > autoAnim.nextBlinkTime) {
-        // 开始眨眼
         autoAnim.blinkState = 0;
         autoAnim.blinkTimer = 0;
     } else if (autoAnim.blinkState === 0 && autoAnim.blinkTimer > 120) {
-        // 眨眼结束
         autoAnim.blinkState = 1;
         autoAnim.blinkTimer = 0;
         autoAnim.nextBlinkTime = 2000 + Math.random() * 5000;
-        // 偶尔连续眨两下
         if (Math.random() < 0.15) {
             autoAnim.nextBlinkTime = 200;
         }
     }
-    const eyeOpen = autoAnim.blinkState === 1 ? 1 : 0;
-    setParam(model, 'ParamEyeLOpen', eyeOpen);
-    setParam(model, 'ParamEyeROpen', eyeOpen);
+    // 眨眼值（sleepy时覆盖）
+    let eyeOpenValue = autoAnim.blinkState === 1 ? 1 : 0;
 
     // ===== 3. 头部随机缓慢摆动 =====
     if (now - autoAnim.lastHeadChangeTime > 4000 + Math.random() * 3000) {
-        autoAnim.headTargetX = (Math.random() - 0.5) * 40; // -20 ~ +20
-        autoAnim.headTargetY = (Math.random() - 0.5) * 30; // -15 ~ +15
+        autoAnim.headTargetX = (Math.random() - 0.5) * 40;
+        autoAnim.headTargetY = (Math.random() - 0.5) * 30;
         autoAnim.bodyTargetX = autoAnim.headTargetX * 0.3;
         autoAnim.lastHeadChangeTime = now;
     }
@@ -940,7 +901,7 @@ function animateLoop() {
 
     setParam(model, 'ParamAngleX', autoAnim.headX);
     setParam(model, 'ParamAngleY', autoAnim.headY);
-    setParam(model, 'ParamAngleZ', Math.sin(elapsed / 5000) * 3); // 微微歪头
+    setParam(model, 'ParamAngleZ', Math.sin(elapsed / 5000) * 3);
     setParam(model, 'ParamBodyAngleX', autoAnim.bodyX);
     setParam(model, 'ParamBodyAngleY', Math.sin(elapsed / 7000) * 2);
 
@@ -955,7 +916,7 @@ function animateLoop() {
     setParam(model, 'ParamEyeBallX', autoAnim.eyeBallX);
     setParam(model, 'ParamEyeBallY', autoAnim.eyeBallY);
 
-    // ===== 5. 头发随风/随动摆动 =====
+    // ===== 5. 头发摆动 =====
     const hairSwing = Math.sin(elapsed / 2000) * 0.3 + Math.sin(elapsed / 3500) * 0.2;
     setParam(model, 'ParamHairFront', hairSwing);
     setParam(model, 'ParamHairFront2', hairSwing * 0.8);
@@ -970,46 +931,100 @@ function animateLoop() {
         autoAnim.lastArmChangeTime = now;
     }
     autoAnim.armValue += (autoAnim.armTarget - autoAnim.armValue) * 0.02;
-    setParam(model, 'Param21', autoAnim.armValue);
 
     // ===== 7. 说话时嘴巴动 =====
+    let mouthOpenValue = breathValue * 0.05;
     if (autoAnim.isTalking) {
         autoAnim.talkPhase += 0.3;
-        const mouthOpen = (Math.sin(autoAnim.talkPhase) + 1) * 0.35;
-        setParam(model, 'ParamMouthOpenY', mouthOpen);
-    } else {
-        // 嘴巴闭合（微微有呼吸感）
-        setParam(model, 'ParamMouthOpenY', breathValue * 0.05);
+        mouthOpenValue = (Math.sin(autoAnim.talkPhase) + 1) * 0.35;
     }
 
-    // ===== 8. 心情影响表情微调 =====
-    if (currentMood >= 65) {
-        // 开心时微笑
-        setParam(model, 'ParamEyeLSmile', 0.4);
-        setParam(model, 'ParamEyeRSmile', 0.4);
-        setParam(model, 'ParamMouthForm', 0.3);
-    } else if (currentMood <= 35) {
-        // 低落时眉毛下垂
-        setParam(model, 'ParamBrowLY', -0.3);
-        setParam(model, 'ParamBrowRY', -0.3);
-        setParam(model, 'ParamMouthForm', -0.2);
-        setParam(model, 'ParamEyeLSmile', 0);
-        setParam(model, 'ParamEyeRSmile', 0);
-    } else {
-        // 平静
-        setParam(model, 'ParamEyeLSmile', 0);
-        setParam(model, 'ParamEyeRSmile', 0);
-        setParam(model, 'ParamMouthForm', 0);
-        setParam(model, 'ParamBrowLY', 0);
-        setParam(model, 'ParamBrowRY', 0);
-    }
-
-    // ===== 9. 锁定特效参数（防止闪白） =====
+    // ===== 8. 锁定所有特效/图层参数为0（防止闪白） =====
+    setParam(model, 'Param3', 0);
+    setParam(model, 'Param4', 0);
+    setParam(model, 'Param5', 0);
+    setParam(model, 'Param6', 0);
+    setParam(model, 'Param7', 0);
+    setParam(model, 'Param8', 0);
+    setParam(model, 'Param9', 0);
+    setParam(model, 'Param10', 0);
+    setParam(model, 'Param11', 0);
+    setParam(model, 'Param12', 0);
+    setParam(model, 'Param13', 0);
+    setParam(model, 'Param14', 0);
+    setParam(model, 'Param15', 0);
+    setParam(model, 'Param16', 0);
+    setParam(model, 'Param17', 0);
+    setParam(model, 'Param18', 0);
+    setParam(model, 'Param19', 0);
+    setParam(model, 'Param20', 0);
+    setParam(model, 'Param21', 0);
+    setParam(model, 'Param22', 0);
+    setParam(model, 'Param23', 0);
+    setParam(model, 'Param24', 0);
+    setParam(model, 'Param25', 0);
+    setParam(model, 'Param26', 0);
+    setParam(model, 'Param27', 0);
+    setParam(model, 'Param28', 0);
     setParam(model, 'Param29', 0);
     setParam(model, 'Param30', 0);
-    setParam(model, 'Param22', 0);
-}
+    setParam(model, 'Param31', 0);
+    setParam(model, 'Param32', 0);
+    setParam(model, 'ParamCheek', 0);
 
+    // ===== 9. 心情影响基础表情 =====
+    let smileValue = 0;
+    let browValue = 0;
+    let mouthFormValue = 0;
+    let cheekValue = 0;
+
+    if (currentMood >= 65) {
+        smileValue = 0.4;
+        mouthFormValue = 0.3;
+    } else if (currentMood <= 35) {
+        browValue = -0.3;
+        mouthFormValue = -0.2;
+    }
+
+    // ===== 10. 情绪表情覆盖（通过参数实现） =====
+    if (currentEmotion === 'shy') {
+        setParam(model, 'Param6', 1);
+        cheekValue = 1;
+        smileValue = 0.2;
+    } else if (currentEmotion === 'cry') {
+        setParam(model, 'Param8', 1);
+        browValue = -0.5;
+        mouthFormValue = -0.3;
+    } else if (currentEmotion === 'worry') {
+        setParam(model, 'Param5', 1);
+        setParam(model, 'ParamBrowLAngle', -0.4);
+        setParam(model, 'ParamBrowRAngle', -0.4);
+    } else if (currentEmotion === 'sleepy') {
+        eyeOpenValue = autoAnim.blinkState === 1 ? 0.3 : 0;
+        setParam(model, 'Param31', 1);
+    } else if (currentEmotion === 'happy') {
+        smileValue = 0.7;
+        mouthFormValue = 0.5;
+        cheekValue = 0.5;
+    } else if (currentEmotion === 'angry') {
+        setParam(model, 'ParamBrowLAngle', 0.6);
+        setParam(model, 'ParamBrowRAngle', 0.6);
+        browValue = 0.3;
+        mouthFormValue = -0.3;
+    }
+
+    // ===== 11. 最终写入所有表情参数 =====
+    setParam(model, 'ParamEyeLOpen', eyeOpenValue);
+    setParam(model, 'ParamEyeROpen', eyeOpenValue);
+    setParam(model, 'ParamEyeLSmile', smileValue);
+    setParam(model, 'ParamEyeRSmile', smileValue);
+    setParam(model, 'ParamBrowLY', browValue);
+    setParam(model, 'ParamBrowRY', browValue);
+    setParam(model, 'ParamMouthForm', mouthFormValue);
+    setParam(model, 'ParamMouthOpenY', mouthOpenValue);
+    setParam(model, 'ParamCheek', cheekValue);
+    setParam(model, 'Param21', autoAnim.armValue);
+}
 
 // 安全设置参数
 function setParam(coreModel, paramId, value) {
@@ -1021,7 +1036,7 @@ function setParam(coreModel, paramId, value) {
     } catch(e) {}
 }
 
-// 开始/停止说话动画
+// 说话动画控制
 function startTalking() {
     autoAnim.isTalking = true;
     autoAnim.talkPhase = 0;
@@ -1031,6 +1046,7 @@ function stopTalking() {
     autoAnim.isTalking = false;
 }
 </script>
+
 <script>
 // ==================== 天气系统 ====================
 
