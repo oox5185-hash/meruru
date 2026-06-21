@@ -32,14 +32,7 @@
             {"Name": "exp14", "File": "14.exp3.json"},
             {"Name": "exp1516", "File": "1516.exp3.json"}
         ],
-        "Motions": {
-            "Idle": [
-                {"File": "idle.motion3.json", "FadeInTime": 0.5, "FadeOutTime": 0.5}
-            ],
-            "Tap": [
-                {"File": "idle.motion3.json", "FadeInTime": 0.3, "FadeOutTime": 0.3}
-            ]
-        }
+        "Motions": {}
     },
     "Groups": [
         {"Target": "Parameter", "Name": "LipSync", "Ids": []},
