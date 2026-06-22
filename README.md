@@ -535,7 +535,7 @@
     <div class="pet-size-labels"><span>小</span><span>大</span></div>
 
     <a id="pet-download-btn"
-       href="https://github.com/oox5185-hash/meruru-pet/releases/download/v1.0/meruru-pet.zip"
+       href="https://github.com/oox5185-hash/meruru-pet/releases/download/v1.0/app-debug.apk"
        target="_blank">
         📥 下载桌宠 APK
     </a>
