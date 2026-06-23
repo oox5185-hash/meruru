@@ -1137,19 +1137,31 @@ let weatherData = {
     loaded: false
 };
 
+function fetchWithTimeout(url, timeout) {
+    return Promise.race([
+        fetch(url),
+        new Promise(function(_, reject) {
+            setTimeout(function() { reject(new Error('timeout')); }, timeout);
+        })
+    ]);
+}
+
 async function fetchWeather() {
     try {
         let lat, lon, city;
 
-        // 方案1: 太平洋网络 (中国大陆稳定可用)
+        // 方案1: 太平洋网络 (中国大陆稳定)
         try {
-            const ipRes = await fetch('https://whois.pconline.com.cn/ipJson.jsp?json=true');
+            const ipRes = await fetchWithTimeout('https://whois.pconline.com.cn/ipJson.jsp?json=true', 5000);
             const ipText = await ipRes.text();
-            const cleanText = ipText.replace(/^\s*|\s*$/g, '').replace(/^\uFEFF/, '');
-            const ipData = JSON.parse(cleanText);
+            // pconline 返回可能带回调包裹或BOM，需要提取JSON部分
+            let jsonStr = ipText;
+            const jsonMatch = ipText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) jsonStr = jsonMatch[0];
+            const ipData = JSON.parse(jsonStr);
             if (ipData && ipData.city) {
                 city = ipData.city.replace('市', '');
-                const geoRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=1&language=zh');
+                const geoRes = await fetchWithTimeout('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=1&language=zh', 5000);
                 const geoData = await geoRes.json();
                 if (geoData.results && geoData.results.length > 0) {
                     lat = geoData.results[0].latitude;
@@ -1159,38 +1171,38 @@ async function fetchWeather() {
             }
         } catch(e1) { console.warn('pconline failed:', e1); }
 
-        // 方案2: ip-api.com (备用)
+        // 方案2: ipwho.is
         if (!lat || !lon) {
             try {
-                const ipRes2 = await fetch('https://ip-api.com/json/?lang=zh-CN&fields=status,city,regionName,lat,lon');
+                const ipRes2 = await fetchWithTimeout('https://ipwho.is/', 5000);
                 const ipData2 = await ipRes2.json();
-                if (ipData2.status === 'success') {
-                    city = ipData2.city || ipData2.regionName || '未知';
-                    lat = ipData2.lat;
-                    lon = ipData2.lon;
+                if (ipData2.success !== false) {
+                    city = ipData2.city || ipData2.region || '未知';
+                    lat = ipData2.latitude;
+                    lon = ipData2.longitude;
                 }
-            } catch(e2) { console.warn('ip-api.com failed:', e2); }
+            } catch(e2) { console.warn('ipwho.is failed:', e2); }
         }
 
-        // 方案3: ipwho.is (海外备用)
+        // 方案3: ipapi.co
         if (!lat || !lon) {
             try {
-                const ipRes3 = await fetch('https://ipwho.is/');
+                const ipRes3 = await fetchWithTimeout('https://ipapi.co/json/', 5000);
                 const ipData3 = await ipRes3.json();
-                if (ipData3.success !== false) {
+                if (ipData3.latitude) {
                     city = ipData3.city || ipData3.region || '未知';
                     lat = ipData3.latitude;
                     lon = ipData3.longitude;
                 }
-            } catch(e3) { console.warn('ipwho.is failed:', e3); }
+            } catch(e3) { console.warn('ipapi.co failed:', e3); }
         }
 
         if (!lat || !lon) {
             throw new Error('无法获取位置信息');
         }
 
-        const weatherRes = await fetch(
-            'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m'
+        const weatherRes = await fetchWithTimeout(
+            'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m', 8000
         );
         const wData = await weatherRes.json();
         const current = wData.current;
@@ -1240,6 +1252,7 @@ async function fetchWeather() {
 
 function updateWeatherBadge() {
     const badge = document.getElementById('weatherBadge');
+    if (!badge) return;
     if (weatherData.loaded) {
         badge.textContent = weatherData.icon + ' ' + weatherData.city + ' ' + weatherData.temp + '°C ' + weatherData.condition;
     } else {
@@ -1273,6 +1286,8 @@ function getWeatherPrompt() {
 }
 
 setInterval(fetchWeather, 30 * 60 * 1000);
+</script>
+
 <script>
 // ==================== 时间系统 ====================
 
