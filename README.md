@@ -1127,7 +1127,7 @@ function stopTalking() {
 }
 </script>
 <script>
-// ==================== 天气系统【修复：改用HTTPS兼容的API】 ====================
+// ==================== 天气系统 ====================
 
 let weatherData = {
     city: '未知',
@@ -1139,49 +1139,58 @@ let weatherData = {
 
 async function fetchWeather() {
     try {
-        // 【修复】使用支持HTTPS的IP定位服务（多个备选）
         let lat, lon, city;
 
-        // 方案1：ipwho.is（免费，支持HTTPS）
+        // 方案1: 太平洋网络 (中国大陆稳定可用)
         try {
-            const ipRes = await fetch('https://ipwho.is/');
-            const ipData = await ipRes.json();
-            if (ipData.success !== false) {
-                city = ipData.city || ipData.region || '未知';
-                lat = ipData.latitude;
-                lon = ipData.longitude;
+            const ipRes = await fetch('https://whois.pconline.com.cn/ipJson.jsp?json=true');
+            const ipText = await ipRes.text();
+            const cleanText = ipText.replace(/^\s*|\s*$/g, '').replace(/^\uFEFF/, '');
+            const ipData = JSON.parse(cleanText);
+            if (ipData && ipData.city) {
+                city = ipData.city.replace('市', '');
+                const geoRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(city) + '&count=1&language=zh');
+                const geoData = await geoRes.json();
+                if (geoData.results && geoData.results.length > 0) {
+                    lat = geoData.results[0].latitude;
+                    lon = geoData.results[0].longitude;
+                    city = geoData.results[0].name || city;
+                }
             }
-        } catch(e1) {}
+        } catch(e1) { console.warn('pconline failed:', e1); }
 
-        // 方案2：如果方案1失败，用 ipapi.co
+        // 方案2: ip-api.com (备用)
         if (!lat || !lon) {
             try {
-                const ipRes2 = await fetch('https://ipapi.co/json/');
+                const ipRes2 = await fetch('https://ip-api.com/json/?lang=zh-CN&fields=status,city,regionName,lat,lon');
                 const ipData2 = await ipRes2.json();
-                city = ipData2.city || ipData2.region || '未知';
-                lat = ipData2.latitude;
-                lon = ipData2.longitude;
-            } catch(e2) {}
+                if (ipData2.status === 'success') {
+                    city = ipData2.city || ipData2.regionName || '未知';
+                    lat = ipData2.lat;
+                    lon = ipData2.lon;
+                }
+            } catch(e2) { console.warn('ip-api.com failed:', e2); }
         }
 
-        // 方案3：如果都失败，用 ip-api.io
+        // 方案3: ipwho.is (海外备用)
         if (!lat || !lon) {
             try {
-                const ipRes3 = await fetch('https://ip-api.io/json');
+                const ipRes3 = await fetch('https://ipwho.is/');
                 const ipData3 = await ipRes3.json();
-                city = ipData3.city || ipData3.region_name || '未知';
-                lat = ipData3.latitude;
-                lon = ipData3.longitude;
-            } catch(e3) {}
+                if (ipData3.success !== false) {
+                    city = ipData3.city || ipData3.region || '未知';
+                    lat = ipData3.latitude;
+                    lon = ipData3.longitude;
+                }
+            } catch(e3) { console.warn('ipwho.is failed:', e3); }
         }
 
         if (!lat || !lon) {
             throw new Error('无法获取位置信息');
         }
 
-        // 用 Open-Meteo 获取天气（完全免费，无需key，支持HTTPS）
         const weatherRes = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m`
+            'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,relative_humidity_2m,weather_code,apparent_temperature,wind_speed_10m'
         );
         const wData = await weatherRes.json();
         const current = wData.current;
@@ -1191,7 +1200,6 @@ async function fetchWeather() {
         const humidity = current.relative_humidity_2m;
         const weatherCode = current.weather_code;
 
-        // WMO天气代码映射
         let desc = '未知';
         let icon = '🌤';
         if (weatherCode === 0) { desc = '晴天'; icon = '☀️'; }
@@ -1233,9 +1241,9 @@ async function fetchWeather() {
 function updateWeatherBadge() {
     const badge = document.getElementById('weatherBadge');
     if (weatherData.loaded) {
-        badge.textContent = `${weatherData.icon} ${weatherData.city} ${weatherData.temp}°C ${weatherData.condition}`;
+        badge.textContent = weatherData.icon + ' ' + weatherData.city + ' ' + weatherData.temp + '°C ' + weatherData.condition;
     } else {
-        badge.textContent = `${weatherData.icon} ${weatherData.condition}`;
+        badge.textContent = weatherData.icon + ' ' + weatherData.condition;
     }
 }
 
@@ -1244,30 +1252,27 @@ function applyWeatherMoodEffect() {
     const cond = weatherData.condition;
     const temp = parseInt(weatherData.temp);
 
-    if (cond.includes('晴') && temp >= 15 && temp <= 28) {
+    if (cond.indexOf('晴') >= 0 && temp >= 15 && temp <= 28) {
         changeMood(+5);
-    } else if (cond.includes('雨')) {
+    } else if (cond.indexOf('雨') >= 0) {
         changeMood(-3);
-    } else if (cond.includes('雪')) {
+    } else if (cond.indexOf('雪') >= 0) {
         changeMood(+3);
     } else if (temp > 35) {
         changeMood(-4);
     } else if (temp < 0) {
         changeMood(-2);
-    } else if (cond.includes('雷')) {
+    } else if (cond.indexOf('雷') >= 0) {
         changeMood(-5);
     }
 }
 
 function getWeatherPrompt() {
     if (!weatherData.loaded) return '';
-    return `当前天气：${weatherData.city}，${weatherData.temp}°C，${weatherData.condition}。体感温度${weatherData.feelsLike || weatherData.temp}°C，湿度${weatherData.humidity || '未知'}%。`;
+    return '当前天气：' + weatherData.city + '，' + weatherData.temp + '°C，' + weatherData.condition + '。体感温度' + (weatherData.feelsLike || weatherData.temp) + '°C，湿度' + (weatherData.humidity || '未知') + '%。';
 }
 
-// 每30分钟刷新天气
 setInterval(fetchWeather, 30 * 60 * 1000);
-</script>
-
 <script>
 // ==================== 时间系统 ====================
 
