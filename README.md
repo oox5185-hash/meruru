@@ -2021,7 +2021,7 @@ function clearAllData() {
 
 <script>
 // ==================== Meruru 语音系统 ====================
-var TTS_URL = "https://94cde8ea6c95af1dcc.gradio.live";
+var TTS_URL = "https://bea16857579f75015e.gradio.live";
 
 async function speakMeruru(text, emotion) {
     if (!text || !TTS_URL) return;
@@ -2030,157 +2030,37 @@ async function speakMeruru(text, emotion) {
         var response = await fetch(TTS_URL + "/api/predict", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: [text, emotion || "neutral"] })
+            body: JSON.stringify({ data: [text, emotion || "neutral"], fn_index: 0 })
         });
         var result = await response.json();
         if (result.data && result.data[0]) {
             var audioInfo = result.data[0];
-            var audioUrl = audioInfo.url || audioInfo;
-            if (audioUrl.startsWith('/')) audioUrl = TTS_URL + audioUrl;
-            var audio = new Audio(audioUrl);
-            audio.onended = function() { stopTalking(); };
-            audio.onerror = function() { stopTalking(); };
-            await audio.play();
+            var audioUrl = "";
+            if (typeof audioInfo === 'object') {
+                if (audioInfo.path) {
+                    audioUrl = TTS_URL + "/file=" + audioInfo.path;
+                } else if (audioInfo.url) {
+                    audioUrl = audioInfo.url;
+                } else if (audioInfo.name) {
+                    audioUrl = TTS_URL + "/file=" + audioInfo.name;
+                } else if (audioInfo.data) {
+                    audioUrl = audioInfo.data;
+                }
+            } else if (typeof audioInfo === 'string') {
+                audioUrl = audioInfo;
+            }
+            if (audioUrl) {
+                if (audioUrl.startsWith('/')) audioUrl = TTS_URL + audioUrl;
+                var audio = new Audio(audioUrl);
+                audio.onended = function() { stopTalking(); };
+                audio.onerror = function() { stopTalking(); };
+                audio.play().catch(function() { stopTalking(); });
+            } else { stopTalking(); }
         } else { stopTalking(); }
     } catch(e) {
-        console.error("TTS error:", e);
+        console.error("TTS:", e);
         stopTalking();
     }
-}
-
-// ==================== 消息和气泡 ====================
-var isWaitingReply = false;
-var speechTimer = null;
-
-function showSpeech(text) {
-    var bubble = document.getElementById('speechBubble');
-    bubble.textContent = text;
-    bubble.classList.add('show');
-    if (speechTimer) clearTimeout(speechTimer);
-    speechTimer = setTimeout(function() {
-        bubble.classList.remove('show');
-    }, Math.max(5000, text.length * 300));
-}
-
-async function sendMessage() {
-    var input = document.getElementById('messageInput');
-    var text = input.value.trim();
-    if (!text || isWaitingReply) return;
-
-    input.value = '';
-    isWaitingReply = true;
-    pushHistory('user', text);
-    showSpeech('……');
-
-    var rawReply = await callAI(text);
-    var parsed = parseReply(rawReply);
-
-    showSpeech(parsed.text);
-    setEmotion(parsed.emotion);
-    if (parsed.moodDelta !== 0) changeMood(parsed.moodDelta);
-    pushHistory('assistant', rawReply);
-    addAffection(1);
-
-    speakMeruru(parsed.text, parsed.emotion);
-
-    isWaitingReply = false;
-}
-
-// ==================== UI 控制 ====================
-function toggleInput() {
-    var bar = document.getElementById('inputBar');
-    bar.classList.toggle('hidden');
-}
-
-function openHistory() {
-    document.getElementById('historyOverlay').classList.add('show');
-    var list = document.getElementById('historyList');
-    list.innerHTML = '';
-    var history = getHistory();
-    history.forEach(function(msg) {
-        var div = document.createElement('div');
-        div.className = 'history-item ' + (msg.role === 'user' ? 'user' : 'meruru');
-        div.innerHTML = '<div class="who">' + (msg.role === 'user' ? '你' : '梅露露') + '</div>' + parseReply(msg.content).text;
-        list.appendChild(div);
-    });
-    list.scrollTop = list.scrollHeight;
-}
-
-function closeHistory() {
-    document.getElementById('historyOverlay').classList.remove('show');
-}
-
-function openSettings() {
-    var s = getSettings();
-    document.getElementById('setApiUrl').value = s.apiUrl;
-    document.getElementById('setApiKey').value = s.apiKey;
-    document.getElementById('setModel').value = s.model;
-    document.getElementById('setLive2dUrl').value = s.live2dUrl;
-    document.getElementById('setGreetInterval').value = s.greetInterval;
-    document.getElementById('setIdleInterval').value = s.idleInterval;
-    document.getElementById('setModelScale').value = s.modelScale;
-    document.getElementById('setModelX').value = s.modelX;
-    document.getElementById('setModelY').value = s.modelY;
-    document.getElementById('settingsOverlay').classList.add('show');
-}
-
-function closeSettings() {
-    document.getElementById('settingsOverlay').classList.remove('show');
-}
-
-function saveSettings() {
-    var s = {
-        apiUrl: document.getElementById('setApiUrl').value.trim(),
-        apiKey: document.getElementById('setApiKey').value.trim(),
-        model: document.getElementById('setModel').value.trim(),
-        live2dUrl: document.getElementById('setLive2dUrl').value.trim(),
-        greetInterval: parseInt(document.getElementById('setGreetInterval').value) || 0,
-        idleInterval: parseInt(document.getElementById('setIdleInterval').value) || 0,
-        modelScale: parseFloat(document.getElementById('setModelScale').value) || 0.15,
-        modelX: parseFloat(document.getElementById('setModelX').value) || 0.3,
-        modelY: parseFloat(document.getElementById('setModelY').value) || 0.55
-    };
-    saveSettingsData(s);
-    positionModel();
-    closeSettings();
-}
-
-async function testConnection() {
-    var dot = document.getElementById('apiStatusDot');
-    dot.className = 'status-dot';
-    var url = document.getElementById('setApiUrl').value.trim();
-    var key = document.getElementById('setApiKey').value.trim();
-    if (!url || !key) { dot.className = 'status-dot err'; return; }
-    dot.className = 'status-dot ok';
-}
-
-function reloadModel() {
-    var url = document.getElementById('setLive2dUrl').value.trim();
-    if (url) loadModel(url);
-}
-
-function clearAllData() {
-    if (confirm('确定要清除所有数据吗？')) {
-        localStorage.clear();
-        location.reload();
-    }
-}
-
-function onModelTap(e) {
-    changeMood(+2);
-    addAffection(1);
-}
-
-function markInteraction() {}
-
-function initBehaviorTimers() {}
-
-function togglePetPanel() {
-    document.getElementById('pet-panel').classList.toggle('show');
-}
-
-function updatePetSize(val) {
-    document.getElementById('pet-size-value').textContent = val;
 }
 
 // ==================== 初始化启动 ====================
@@ -2237,6 +2117,7 @@ async function sendWelcomeGreeting() {
     isWaitingReply = false;
 }
 
+// ===== APK悬浮窗点击入口 =====
 function onPetClicked() {
     onModelTap();
 }
