@@ -2020,79 +2020,160 @@ function clearAllData() {
 </script>
 
 <script>
-// ==================== 初始化启动 ====================
+// ==================== Meruru 语音系统 ====================
+var TTS_URL = "https://94cde8ea6c95af1dcc.gradio.live";
 
-document.addEventListener('pointerdown', markInteraction);
-document.addEventListener('keydown', markInteraction);
-
-async function init() {
-    loadMoodData();
-    updateAffectionBadge();
-    updateMoodBadge();
-
-    // 获取天气
-    fetchWeather();
-
-    // 初始化Live2D
-    await initLive2D();
-
-    // 启动行为定时器
-    initBehaviorTimers();
-
-    // 启动心情自动波动
-    startMoodDecay();
-
-    // 应用时间对心情的影响
-    applyTimeMoodEffect();
-
-    // 延迟打招呼
-    setTimeout(() => {
-        sendWelcomeGreeting();
-    }, 2000);
+async function speakMeruru(text, emotion) {
+    if (!text || !TTS_URL) return;
+    startTalking();
+    try {
+        var response = await fetch(TTS_URL + "/api/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: [text, emotion || "neutral"] })
+        });
+        var result = await response.json();
+        if (result.data && result.data[0]) {
+            var audioInfo = result.data[0];
+            var audioUrl = audioInfo.url || audioInfo;
+            if (audioUrl.startsWith('/')) audioUrl = TTS_URL + audioUrl;
+            var audio = new Audio(audioUrl);
+            audio.onended = function() { stopTalking(); };
+            audio.onerror = function() { stopTalking(); };
+            await audio.play();
+        } else { stopTalking(); }
+    } catch(e) {
+        console.error("TTS error:", e);
+        stopTalking();
+    }
 }
 
-async function sendWelcomeGreeting() {
-    const settings = getSettings();
-    if (!settings.apiUrl || !settings.apiKey) {
-        showSpeech('那、那个……主人，请先点右上角的⚙设置，填写API信息……这样我才能和你说话……');
-        setEmotion('worry');
-        return;
-    }
+// ==================== 消息和气泡 ====================
+var isWaitingReply = false;
+var speechTimer = null;
 
-    if (isWaitingReply) return;
+function showSpeech(text) {
+    var bubble = document.getElementById('speechBubble');
+    bubble.textContent = text;
+    bubble.classList.add('show');
+    if (speechTimer) clearTimeout(speechTimer);
+    speechTimer = setTimeout(function() {
+        bubble.classList.remove('show');
+    }, Math.max(5000, text.length * 300));
+}
+
+async function sendMessage() {
+    var input = document.getElementById('messageInput');
+    var text = input.value.trim();
+    if (!text || isWaitingReply) return;
+
+    input.value = '';
     isWaitingReply = true;
+    pushHistory('user', text);
+    showSpeech('……');
 
-    const history = getHistory();
-    const time = getTimePeriod();
-    let prompt = '';
+    var rawReply = await callAI(text);
+    var parsed = parseReply(rawReply);
 
-    if (history.length === 0) {
-        prompt = '（这是你第一次见到主人，请做一个害羞紧张的自我介绍。）';
-    } else {
-        let weatherHint = '';
-        if (weatherData.loaded) {
-            weatherHint = `外面${weatherData.condition}，${weatherData.temp}°C。`;
-        }
-        prompt = `（主人回来了，现在是${time.period}，${getTimeStr()}。${weatherHint}请根据时间和天气打招呼，表示你一直在等主人。如果天气特殊可以提醒一下。）`;
-    }
-
-    const rawReply = await callAI(prompt);
-    const { emotion, moodDelta, text } = parseReply(rawReply);
-
-    showSpeech(text);
-    setEmotion(emotion);
-    if (moodDelta !== 0) changeMood(moodDelta);
+    showSpeech(parsed.text);
+    setEmotion(parsed.emotion);
+    if (parsed.moodDelta !== 0) changeMood(parsed.moodDelta);
     pushHistory('assistant', rawReply);
-    changeMood(+3);
+    addAffection(1);
+
+    speakMeruru(parsed.text, parsed.emotion);
 
     isWaitingReply = false;
 }
 
-window.addEventListener('load', () => {
-    init();
-});
+// ==================== UI 控制 ====================
+function toggleInput() {
+    var bar = document.getElementById('inputBar');
+    bar.classList.toggle('hidden');
+}
 
-// ==================== 桌宠面板 ====================
+function openHistory() {
+    document.getElementById('historyOverlay').classList.add('show');
+    var list = document.getElementById('historyList');
+    list.innerHTML = '';
+    var history = getHistory();
+    history.forEach(function(msg) {
+        var div = document.createElement('div');
+        div.className = 'history-item ' + (msg.role === 'user' ? 'user' : 'meruru');
+        div.innerHTML = '<div class="who">' + (msg.role === 'user' ? '你' : '梅露露') + '</div>' + parseReply(msg.content).text;
+        list.appendChild(div);
+    });
+    list.scrollTop = list.scrollHeight;
+}
+
+function closeHistory() {
+    document.getElementById('historyOverlay').classList.remove('show');
+}
+
+function openSettings() {
+    var s = getSettings();
+    document.getElementById('setApiUrl').value = s.apiUrl;
+    document.getElementById('setApiKey').value = s.apiKey;
+    document.getElementById('setModel').value = s.model;
+    document.getElementById('setLive2dUrl').value = s.live2dUrl;
+    document.getElementById('setGreetInterval').value = s.greetInterval;
+    document.getElementById('setIdleInterval').value = s.idleInterval;
+    document.getElementById('setModelScale').value = s.modelScale;
+    document.getElementById('setModelX').value = s.modelX;
+    document.getElementById('setModelY').value = s.modelY;
+    document.getElementById('settingsOverlay').classList.add('show');
+}
+
+function closeSettings() {
+    document.getElementById('settingsOverlay').classList.remove('show');
+}
+
+function saveSettings() {
+    var s = {
+        apiUrl: document.getElementById('setApiUrl').value.trim(),
+        apiKey: document.getElementById('setApiKey').value.trim(),
+        model: document.getElementById('setModel').value.trim(),
+        live2dUrl: document.getElementById('setLive2dUrl').value.trim(),
+        greetInterval: parseInt(document.getElementById('setGreetInterval').value) || 0,
+        idleInterval: parseInt(document.getElementById('setIdleInterval').value) || 0,
+        modelScale: parseFloat(document.getElementById('setModelScale').value) || 0.15,
+        modelX: parseFloat(document.getElementById('setModelX').value) || 0.3,
+        modelY: parseFloat(document.getElementById('setModelY').value) || 0.55
+    };
+    saveSettingsData(s);
+    positionModel();
+    closeSettings();
+}
+
+async function testConnection() {
+    var dot = document.getElementById('apiStatusDot');
+    dot.className = 'status-dot';
+    var url = document.getElementById('setApiUrl').value.trim();
+    var key = document.getElementById('setApiKey').value.trim();
+    if (!url || !key) { dot.className = 'status-dot err'; return; }
+    dot.className = 'status-dot ok';
+}
+
+function reloadModel() {
+    var url = document.getElementById('setLive2dUrl').value.trim();
+    if (url) loadModel(url);
+}
+
+function clearAllData() {
+    if (confirm('确定要清除所有数据吗？')) {
+        localStorage.clear();
+        location.reload();
+    }
+}
+
+function onModelTap(e) {
+    changeMood(+2);
+    addAffection(1);
+}
+
+function markInteraction() {}
+
+function initBehaviorTimers() {}
 
 function togglePetPanel() {
     document.getElementById('pet-panel').classList.toggle('show');
@@ -2100,26 +2181,69 @@ function togglePetPanel() {
 
 function updatePetSize(val) {
     document.getElementById('pet-size-value').textContent = val;
-    localStorage.setItem('petSize', val);
 }
 
-document.addEventListener('click', function(e) {
-    const panel = document.getElementById('pet-panel');
-    const btn = document.getElementById('pet-btn');
-    if (panel && !panel.contains(e.target) && e.target !== btn) {
-        panel.classList.remove('show');
-    }
-});
+// ==================== 初始化启动 ====================
 
-(function() {
-    const saved = localStorage.getItem('petSize');
-    if (saved) {
-        const slider = document.getElementById('pet-size-slider');
-        const display = document.getElementById('pet-size-value');
-        if (slider) slider.value = saved;
-        if (display) display.textContent = saved;
+document.addEventListener('pointerdown', markInteraction);
+
+async function init() {
+    loadMoodData();
+    fetchWeather();
+    await initLive2D();
+    initBehaviorTimers();
+    startMoodDecay();
+    applyTimeMoodEffect();
+
+    setTimeout(function() {
+        sendWelcomeGreeting();
+    }, 2000);
+}
+
+async function sendWelcomeGreeting() {
+    var settings = getSettings();
+    if (!settings.apiUrl || !settings.apiKey) {
+        showSpeech('主人……请在完整界面设置API……');
+        return;
     }
-})();
+
+    if (isWaitingReply) return;
+    isWaitingReply = true;
+
+    var history = getHistory();
+    var time = getTimePeriod();
+    var prompt = '';
+
+    if (history.length === 0) {
+        prompt = '（这是你第一次见到主人，请做一个害羞紧张的自我介绍。）';
+    } else {
+        var weatherHint = '';
+        if (weatherData.loaded) {
+            weatherHint = '外面' + weatherData.condition + '，' + weatherData.temp + '°C。';
+        }
+        prompt = '（主人回来了，现在是' + time.period + '，' + getTimeStr() + '。' + weatherHint + '请根据时间和天气打招呼，表示你一直在等主人。如果天气特殊可以提醒一下。）';
+    }
+
+    var rawReply = await callAI(prompt);
+    var parsed = parseReply(rawReply);
+
+    showSpeech(parsed.text);
+    speakMeruru(parsed.text, parsed.emotion);
+    setEmotion(parsed.emotion);
+    if (parsed.moodDelta !== 0) changeMood(parsed.moodDelta);
+    pushHistory('assistant', rawReply);
+    changeMood(+3);
+
+    isWaitingReply = false;
+}
+
+function onPetClicked() {
+    onModelTap();
+}
+
+window.addEventListener('load', function() {
+    init();
+});
 </script>
 </body>
 </html>
