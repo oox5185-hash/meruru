@@ -2020,49 +2020,6 @@ function clearAllData() {
 </script>
 
 <script>
-// ==================== Meruru 语音系统 ====================
-var TTS_URL = "https://bea16857579f75015e.gradio.live";
-
-async function speakMeruru(text, emotion) {
-    if (!text || !TTS_URL) return;
-    startTalking();
-    try {
-        var response = await fetch(TTS_URL + "/api/predict", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: [text, emotion || "neutral"], fn_index: 0 })
-        });
-        var result = await response.json();
-        if (result.data && result.data[0]) {
-            var audioInfo = result.data[0];
-            var audioUrl = "";
-            if (typeof audioInfo === 'object') {
-                if (audioInfo.path) {
-                    audioUrl = TTS_URL + "/file=" + audioInfo.path;
-                } else if (audioInfo.url) {
-                    audioUrl = audioInfo.url;
-                } else if (audioInfo.name) {
-                    audioUrl = TTS_URL + "/file=" + audioInfo.name;
-                } else if (audioInfo.data) {
-                    audioUrl = audioInfo.data;
-                }
-            } else if (typeof audioInfo === 'string') {
-                audioUrl = audioInfo;
-            }
-            if (audioUrl) {
-                if (audioUrl.startsWith('/')) audioUrl = TTS_URL + audioUrl;
-                var audio = new Audio(audioUrl);
-                audio.onended = function() { stopTalking(); };
-                audio.onerror = function() { stopTalking(); };
-                audio.play().catch(function() { stopTalking(); });
-            } else { stopTalking(); }
-        } else { stopTalking(); }
-    } catch(e) {
-        console.error("TTS:", e);
-        stopTalking();
-    }
-}
-
 // ==================== 初始化启动 ====================
 
 document.addEventListener('pointerdown', markInteraction);
@@ -2108,7 +2065,6 @@ async function sendWelcomeGreeting() {
     var parsed = parseReply(rawReply);
 
     showSpeech(parsed.text);
-    speakMeruru(parsed.text, parsed.emotion);
     setEmotion(parsed.emotion);
     if (parsed.moodDelta !== 0) changeMood(parsed.moodDelta);
     pushHistory('assistant', rawReply);
